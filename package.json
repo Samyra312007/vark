@@ -1,10 +1,14 @@
 {
   "name": "env-validator",
   "version": "1.0.0",
-  "description": "",
+  "description": "Type-safe environment variable validation with zero dependencies",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "build": "tsc",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "prepublishOnly": "npm run test && npm run build"
   },
   "keywords": [],
   "author": "",

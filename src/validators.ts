@@ -43,13 +43,13 @@ export function validateField(
     const { type, required = true, default: defaultValue, validate, message } = fieldSchema;
 
     //check if value is provided
-    let value = rawValue;
+    let value: any = rawValue;
 
     //Handle missing values
     if (value === undefined || value === null) {
         if (defaultValue !== undefined){
-            //use default value
-            value = defaultValue;
+            //use default value (already the correct type)
+            return { value: defaultValue };
         } else if (!required) {
             //not required and no default, skip validation
             return {value: undefined};
@@ -114,7 +114,7 @@ export function validateField(
         } catch (err: any) {
             return {
                 value: undefined,
-                error: message || `Environment variable "{key}" must be a valid JSON object: ${err.message}`
+                error: message || `Environment variable "${key}" must be a valid JSON object: ${err.message}`
             };
         }
         return { value };
@@ -128,13 +128,13 @@ export function validateField(
         if(validate && !validate(parsedValue)) {
             return {
                 value: parsedValue,
-                error: message || `Environment variable "${key}" failed custom vaildation`
+                error: message || `Environment variable "${key}" failed custom validation`
             };
         }
         return { value: parsedValue };
     } catch (err: any) {
         return {
-            value: undefined;
+            value: undefined,
             error: message || err.message
         };
     }
@@ -146,9 +146,9 @@ export function validateField(
 export function validateAll(
     env: Record<string, string | undefined>,
     schema: Record<string, SchemaField>
-) : { data: Record<string, any>; errors: Array<{field: string; message: string; value:? any}> } {
+) : { data: Record<string, any>; errors: Array<{field: string; message: string; value?: any}> } {
     const data: Record<string, any> = {};
-    const errors: Array<{ field: string; message: string; value:? any }> = [];
+    const errors: Array<{ field: string; message: string; value?: any }> = [];
 
     for(const [key, fieldSchema] of Object.entries(schema)) {
         const rawValue = env[key];

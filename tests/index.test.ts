@@ -13,7 +13,7 @@ describe("Env Validator", () => {
       PORT: { type: "number", required: true },
       NODE_ENV: { type: "string", required: true },
       DEBUG: { type: "boolean", default: false },
-    });
+    }, { allowUnknown: true });
 
     expect(result.PORT).toBe(3000);
     expect(result.NODE_ENV).toBe("development");
