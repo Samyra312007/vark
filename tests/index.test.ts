@@ -257,4 +257,167 @@ describe("Env Validator", () => {
     });
     expect(result.COLOR).toBe("red");
   });
+
+  // ── Nested object validation ──────────────────────────────────
+
+  test("validates nested object schema", () => {
+    const result = validateEnv({
+      DATABASE: '{"HOST":"localhost","PORT":5432,"SSL":true}',
+    }, {
+      DATABASE: {
+        type: "object",
+        schema: {
+          HOST: { type: "string", required: true },
+          PORT: { type: "number", default: 5432 },
+          SSL: { type: "boolean", default: false },
+        },
+      },
+    });
+    expect(result.DATABASE.HOST).toBe("localhost");
+    expect(result.DATABASE.PORT).toBe(5432);
+    expect(result.DATABASE.SSL).toBe(true);
+  });
+
+  test("throws when nested required field is missing", () => {
+    expect(() => {
+      validateEnv({
+        DATABASE: '{"PORT":5432}',
+      }, {
+        DATABASE: {
+          type: "object",
+          schema: {
+            HOST: { type: "string", required: true },
+            PORT: { type: "number" },
+          },
+        },
+      });
+    }).toThrow(/HOST.*required/);
+  });
+
+  test("uses nested default values", () => {
+    const result = validateEnv({
+      DATABASE: '{"HOST":"localhost"}',
+    }, {
+      DATABASE: {
+        type: "object",
+        schema: {
+          HOST: { type: "string" },
+          PORT: { type: "number", default: 5432 },
+          SSL: { type: "boolean", default: false },
+        },
+      },
+    });
+    expect(result.DATABASE.HOST).toBe("localhost");
+    expect(result.DATABASE.PORT).toBe(5432);
+    expect(result.DATABASE.SSL).toBe(false);
+  });
+
+  test("validates deeply nested objects (3 levels)", () => {
+    const result = validateEnv({
+      APP: '{"NAME":"MyApp","FEATURES":{"DARK_MODE":true,"BETA":false}}',
+    }, {
+      APP: {
+        type: "object",
+        schema: {
+          NAME: { type: "string", required: true },
+          FEATURES: {
+            type: "object",
+            schema: {
+              DARK_MODE: { type: "boolean", default: false },
+              BETA: { type: "boolean", default: false },
+            },
+          },
+        },
+      },
+    });
+    expect(result.APP.NAME).toBe("MyApp");
+    expect(result.APP.FEATURES.DARK_MODE).toBe(true);
+    expect(result.APP.FEATURES.BETA).toBe(false);
+  });
+
+  test("nested error messages include deepest field name", () => {
+    expect(() => {
+      validateEnv({
+        APP: '{"NAME":"MyApp","FEATURES":{}}',
+      }, {
+        APP: {
+          type: "object",
+          schema: {
+            NAME: { type: "string" },
+            FEATURES: {
+              type: "object",
+              schema: {
+                DARK_MODE: { type: "boolean", required: true },
+              },
+            },
+          },
+        },
+      });
+    }).toThrow(/DARK_MODE.*required/);
+  });
+
+  test("nested object with parent transformers", () => {
+    const result = validateEnv({
+      CONFIG: '{"NAME":"  Test  ","MODE":"  PROD  "}',
+    }, {
+      CONFIG: {
+        type: "object",
+        schema: {
+          NAME: { type: "string", trim: true },
+          MODE: { type: "string", trim: true, lowercase: true },
+        },
+      },
+    });
+    expect(result.CONFIG.NAME).toBe("Test");
+    expect(result.CONFIG.MODE).toBe("prod");
+  });
+
+  test("nested object with parent enum", () => {
+    expect(() => {
+      validateEnv({
+        DB: '{"HOST":"localhost"}',
+      }, {
+        DB: {
+          type: "object",
+          enum: [{}],
+          schema: {
+            HOST: { type: "string" },
+          },
+        },
+      });
+    }).toThrow(/must be one of/);
+  });
+
+  test("nested object with integer and boolean fields", () => {
+    const result = validateEnv({
+      CACHE: '{"ENABLED":"true","TTL":"300","NAME":"session"}',
+    }, {
+      CACHE: {
+        type: "object",
+        schema: {
+          ENABLED: { type: "boolean", default: false },
+          TTL: { type: "integer", required: true },
+          NAME: { type: "string" },
+        },
+      },
+    });
+    expect(result.CACHE.ENABLED).toBe(true);
+    expect(result.CACHE.TTL).toBe(300);
+    expect(result.CACHE.NAME).toBe("session");
+  });
+
+  test("nested object with schema builder", () => {
+    const result = validateEnv({
+      SERVER: '{"HOST":"0.0.0.0","PORT":"8080"}',
+    }, {
+      SERVER: schema().object({
+        schema: {
+          HOST: schema().string({ default: "localhost" }),
+          PORT: schema().number({ required: true }),
+        },
+      }),
+    });
+    expect(result.SERVER.HOST).toBe("0.0.0.0");
+    expect(result.SERVER.PORT).toBe(8080);
+  });
 });

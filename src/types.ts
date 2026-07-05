@@ -59,8 +59,11 @@ export interface ValidationError {
   value?: any;
 }
 export type ValidatedEnv<T extends Schema> = {
-  [K in keyof T]: T[K]["default"] extends any
-    ? T[K]["type"] extends "number"
+  [K in keyof T]: T[K]["type"] extends "object"
+    ? T[K]["schema"] extends Schema
+      ? ValidatedEnv<T[K]["schema"]>
+      : Record<string, any>
+    : T[K]["type"] extends "number"
       ? number
       : T[K]["type"] extends "boolean"
         ? boolean
@@ -71,15 +74,4 @@ export type ValidatedEnv<T extends Schema> = {
             : T[K]["type"] extends "object"
               ? Record<string, any>
               : string
-    : T[K]["type"] extends "number"
-      ? number | undefined
-      : T[K]["type"] extends "boolean"
-        ? boolean | undefined
-        : T[K]["type"] extends "integer"
-          ? number | undefined
-          : T[K]["type"] extends "array"
-            ? any[] | undefined
-            : T[K]["type"] extends "object"
-              ? Record<string, any> | undefined
-              : string | undefined;
 };

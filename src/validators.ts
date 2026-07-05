@@ -4,27 +4,31 @@ import { applyTransformers } from './transformers';
 /**
  * Parse a string value to the appropriate type
  */
-export function parseValue(value: string | undefined, type: PrimitiveType): any {
+export function parseValue(value: any, type: PrimitiveType): any {
     if(value === undefined || value === null){
         return undefined;
     }
 
     switch (type) {
         case 'string':
-            return value;
-        case  'number':
+            if (typeof value === 'string') return value;
+            return String(value);
+        case 'number':
+            if (typeof value === 'number' && !isNaN(value)) return value;
             const num = Number(value);
             if(isNaN(num)){
                 throw new Error(`Expected a number, got "${value}"`);
             }
             return num;
         case 'integer':
+            if (typeof value === 'number' && Number.isInteger(value)) return value;
             const int = parseInt(value, 10);
             if(isNaN(int) || int.toString() !== value){
                 throw new Error(`Expected an integer, got "${value}"`);
             }
             return int;
         case 'boolean':
+            if (typeof value === 'boolean') return value;
             if (value.toLowerCase() === 'true' || value === '1') return true;
             if(value.toLowerCase() === 'false' || value === '0') return false;
             throw new Error(`Expected a token (true/false/1/0), got "${value}"`);
@@ -38,7 +42,7 @@ export function parseValue(value: string | undefined, type: PrimitiveType): any 
  */
 export function validateField(
     key: string,
-    rawValue: string | undefined,
+    rawValue: any,
     fieldSchema: SchemaField,
 ) : { value: any; error?: string } { 
     const { type, required = true, default: defaultValue, validate, message, pattern, enum: enumValues } = fieldSchema;
@@ -124,6 +128,21 @@ export function validateField(
                     error: message || `Environment variable "${key}" must be one of: ${enumValues.join(", ")}`
                 };
             }
+
+            // Recursive nested object validation
+            if (fieldSchema.schema) {
+                const nestedResult = validateObject(value, fieldSchema.schema, key);
+                if (nestedResult.errors.length > 0) {
+                    const errorStr = nestedResult.errors
+                        .map(e => e.message)
+                        .join("; ");
+                    return {
+                        value: nestedResult.data,
+                        error: message || errorStr
+                    };
+                }
+                return { value: nestedResult.data };
+            }
         } catch (err: any) {
             return {
                 value: undefined,
@@ -135,7 +154,7 @@ export function validateField(
 
     // Handle primitive types
     try {
-        const parsedValue = parseValue(value as string, type as PrimitiveType);
+        const parsedValue = parseValue(value, type as PrimitiveType);
 
         // Apply transformers
         const transformedValue = applyTransformers(parsedValue, fieldSchema);
@@ -176,7 +195,7 @@ export function validateField(
  * Validate multiple fields against a schema
  */
 export function validateAll(
-    env: Record<string, string | undefined>,
+    env: Record<string, any>,
     schema: Record<string, SchemaField>
 ) : { data: Record<string, any>; errors: Array<{field: string; message: string; value?: any}> } {
     const data: Record<string, any> = {};
@@ -197,4 +216,30 @@ export function validateAll(
         }
     }
     return {data, errors};
+}
+
+/**
+ * Recursively validate a parsed object against a nested schema
+ */
+export function validateObject(
+    value: Record<string, any>,
+    schema: Record<string, SchemaField>,
+    parentKey: string
+): { data: Record<string, any>; errors: Array<{field: string; message: string}> } {
+    const data: Record<string, any> = {};
+    const errors: Array<{field: string; message: string}> = [];
+
+    for (const [key, fieldSchema] of Object.entries(schema)) {
+        const fullPath = `${parentKey}.${key}`;
+        const rawValue = value[key];
+        const result = validateField(key, rawValue, fieldSchema);
+
+        if (result.error) {
+            errors.push({ field: fullPath, message: result.error });
+        } else {
+            data[key] = result.value;
+        }
+    }
+
+    return { data, errors };
 }

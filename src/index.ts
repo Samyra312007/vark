@@ -129,6 +129,7 @@ export function schema() {
       message?: string;
       transform?: (value: any) => any;
       enum?: readonly Record<string, any>[];
+      schema?: Schema;
     }) => ({
       type: "object" as const,
       ...options,
