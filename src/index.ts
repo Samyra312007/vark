@@ -67,6 +67,12 @@ export function schema() {
       default?: string;
       validate?: (value: string) => boolean;
       message?: string;
+      trim?: boolean;
+      lowercase?: boolean;
+      uppercase?: boolean;
+      transform?: (value: any) => any;
+      pattern?: RegExp;
+      enum?: readonly string[];
     }) => ({
       type: "string" as const,
       ...options,
@@ -76,6 +82,8 @@ export function schema() {
       default?: number;
       validate?: (value: number) => boolean;
       message?: string;
+      transform?: (value: any) => any;
+      enum?: readonly number[];
     }) => ({
       type: "number" as const,
       ...options,
@@ -85,6 +93,8 @@ export function schema() {
       default?: number;
       validate?: (value: number) => boolean;
       message?: string;
+      transform?: (value: any) => any;
+      enum?: readonly number[];
     }) => ({
       type: "integer" as const,
       ...options,
@@ -94,6 +104,8 @@ export function schema() {
       default?: boolean;
       validate?: (value: boolean) => boolean;
       message?: string;
+      transform?: (value: any) => any;
+      enum?: readonly boolean[];
     }) => ({
       type: "boolean" as const,
       ...options,
@@ -104,6 +116,8 @@ export function schema() {
       items?: any;
       validate?: (value: any[]) => boolean;
       message?: string;
+      transform?: (value: any) => any;
+      enum?: readonly any[][];
     }) => ({
       type: "array" as const,
       ...options,
@@ -113,6 +127,8 @@ export function schema() {
       default?: Record<string, any>;
       validate?: (value: Record<string, any>) => boolean;
       message?: string;
+      transform?: (value: any) => any;
+      enum?: readonly Record<string, any>[];
     }) => ({
       type: "object" as const,
       ...options,

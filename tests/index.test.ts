@@ -118,4 +118,143 @@ describe("Env Validator", () => {
     expect(result.PORT).toBeUndefined();
     expect(result.DEBUG).toBe(false);
   });
+
+  // ── Transformers ──────────────────────────────────────────────
+
+  test("trims string values", () => {
+    const result = validateEnv({ NAME: "  hello  " }, {
+      NAME: { type: "string", trim: true },
+    });
+    expect(result.NAME).toBe("hello");
+  });
+
+  test("lowercases string values", () => {
+    const result = validateEnv({ NAME: "HELLO" }, {
+      NAME: { type: "string", lowercase: true },
+    });
+    expect(result.NAME).toBe("hello");
+  });
+
+  test("uppercases string values", () => {
+    const result = validateEnv({ NAME: "hello" }, {
+      NAME: { type: "string", uppercase: true },
+    });
+    expect(result.NAME).toBe("HELLO");
+  });
+
+  test("applies custom transform function", () => {
+    const result = validateEnv({ COUNT: "5" }, {
+      COUNT: { type: "number", transform: (v: any) => (v as number) * 2 },
+    });
+    expect(result.COUNT).toBe(10);
+  });
+
+  test("chains trim and lowercase", () => {
+    const result = validateEnv({ NAME: "  Hello World  " }, {
+      NAME: { type: "string", trim: true, lowercase: true },
+    });
+    expect(result.NAME).toBe("hello world");
+  });
+
+  // ── Pattern matching ──────────────────────────────────────────
+
+  test("validates string matches pattern", () => {
+    const result = validateEnv({ EMAIL: "user@example.com" }, {
+      EMAIL: { type: "string", pattern: /^[^\s@]+@[^\s@]+\.[^\s@]+$/ },
+    });
+    expect(result.EMAIL).toBe("user@example.com");
+  });
+
+  test("throws when string does not match pattern", () => {
+    expect(() => {
+      validateEnv({ EMAIL: "not-an-email" }, {
+        EMAIL: { type: "string", pattern: /^[^\s@]+@[^\s@]+\.[^\s@]+$/ },
+      });
+    }).toThrow(/does not match pattern/);
+  });
+
+  test("pattern with custom message", () => {
+    expect(() => {
+      validateEnv({ CODE: "abc" }, {
+        CODE: { type: "string", pattern: /^\d{4}$/, message: "CODE must be 4 digits" },
+      });
+    }).toThrow("CODE must be 4 digits");
+  });
+
+  // ── Enum validation ───────────────────────────────────────────
+
+  test("validates string enum (pass)", () => {
+    const result = validateEnv({ NODE_ENV: "production" }, {
+      NODE_ENV: { type: "string", enum: ["development", "staging", "production"] },
+    });
+    expect(result.NODE_ENV).toBe("production");
+  });
+
+  test("throws when value not in enum", () => {
+    expect(() => {
+      validateEnv({ NODE_ENV: "invalid" }, {
+        NODE_ENV: { type: "string", enum: ["development", "staging", "production"] },
+      });
+    }).toThrow(/must be one of/);
+  });
+
+  test("validates number enum (pass)", () => {
+    const result = validateEnv({ PORT: "3000" }, {
+      PORT: { type: "number", enum: [3000, 3001, 3002] },
+    });
+    expect(result.PORT).toBe(3000);
+  });
+
+  test("throws when number not in enum", () => {
+    expect(() => {
+      validateEnv({ PORT: "9999" }, {
+        PORT: { type: "number", enum: [3000, 3001, 3002] },
+      });
+    }).toThrow(/must be one of/);
+  });
+
+  test("enum with custom message", () => {
+    expect(() => {
+      validateEnv({ LEVEL: "warn" }, {
+        LEVEL: { type: "string", enum: ["debug", "info", "error"], message: "Invalid log level" },
+      });
+    }).toThrow("Invalid log level");
+  });
+
+  // ── Combined features ─────────────────────────────────────────
+
+  test("transforms are applied before pattern check", () => {
+    const result = validateEnv({ NAME: "  JOHN  " }, {
+      NAME: { type: "string", trim: true, lowercase: true, pattern: /^[a-z]+$/ },
+    });
+    expect(result.NAME).toBe("john");
+  });
+
+  test("transforms are applied before enum check", () => {
+    const result = validateEnv({ MODE: "  PROD  " }, {
+      MODE: { type: "string", trim: true, lowercase: true, enum: ["dev", "staging", "prod"] },
+    });
+    expect(result.MODE).toBe("prod");
+  });
+
+  test("schema builder accepts transformer options", () => {
+    const result = validateEnv({ NAME: "  Alice  " }, {
+      NAME: schema().string({ trim: true }),
+    });
+    expect(result.NAME).toBe("Alice");
+  });
+
+  test("schema builder accepts pattern", () => {
+    const result = validateEnv({ CODE: "ABC-123" }, {
+      CODE: schema().string({ pattern: /^[A-Z]{3}-\d{3}$/ }),
+    });
+    expect(result.CODE).toBe("ABC-123");
+  });
+
+  test("schema builder accepts enum", () => {
+    const result = validateEnv({ COLOR: "red" }, {
+      COLOR: schema().string({ enum: ["red", "green", "blue"] }),
+    });
+    expect(result.COLOR).toBe("red");
+  });
 });

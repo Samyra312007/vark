@@ -1,8 +1,33 @@
 {
-  "name": "env-validator",
+  "name": "@onelifepolymath/vark",
   "version": "1.0.0",
-  "description": "Type-safe environment variable validation with zero dependencies",
-  "main": "index.js",
+  "description": "Type-safe environment variable validation for Node.js",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "env",
+    "environment",
+    "validation",
+    "config",
+    "configuration",
+    "typescript",
+    "schema"
+  ],
+  "author": "onelifepolymath",
+  "license": "ISC",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Samyra312007/vark.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Samyra312007/vark/issues"
+  },
+  "homepage": "https://github.com/Samyra312007/vark#readme",
   "scripts": {
     "build": "tsc",
     "test": "jest",
@@ -10,10 +35,6 @@
     "test:coverage": "jest --coverage",
     "prepublishOnly": "npm run test && npm run build"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "type": "commonjs",
   "devDependencies": {
     "@types/jest": "^30.0.0",
     "@types/node": "^26.1.0",

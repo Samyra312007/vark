@@ -1,4 +1,5 @@
 import { SchemaField, PrimitiveType } from './types';
+import { applyTransformers } from './transformers';
 
 /**
  * Parse a string value to the appropriate type
@@ -40,7 +41,7 @@ export function validateField(
     rawValue: string | undefined,
     fieldSchema: SchemaField,
 ) : { value: any; error?: string } { 
-    const { type, required = true, default: defaultValue, validate, message } = fieldSchema;
+    const { type, required = true, default: defaultValue, validate, message, pattern, enum: enumValues } = fieldSchema;
 
     //check if value is provided
     let value: any = rawValue;
@@ -93,7 +94,13 @@ export function validateField(
                     return {value: parsed, error: itemErrors.join('; ')};
                 }
             }
-            value = parsed;
+            value = applyTransformers(parsed, fieldSchema);
+            if (enumValues && !enumValues.includes(value)) {
+                return {
+                    value,
+                    error: message || `Environment variable "${key}" must be one of: ${enumValues.join(", ")}`
+                };
+            }
         } catch (err: any){
             return {
                 value: undefined,
@@ -110,7 +117,13 @@ export function validateField(
             if(typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
                 throw new Error(`Expected an object, got ${typeof parsed}`);
             }
-            value = parsed;
+            value = applyTransformers(parsed, fieldSchema);
+            if (enumValues && !enumValues.includes(value)) {
+                return {
+                    value,
+                    error: message || `Environment variable "${key}" must be one of: ${enumValues.join(", ")}`
+                };
+            }
         } catch (err: any) {
             return {
                 value: undefined,
@@ -124,14 +137,33 @@ export function validateField(
     try {
         const parsedValue = parseValue(value as string, type as PrimitiveType);
 
-        //Run custom validation if provided
-        if(validate && !validate(parsedValue)) {
+        // Apply transformers
+        const transformedValue = applyTransformers(parsedValue, fieldSchema);
+
+        // Check pattern (string only)
+        if (pattern && typeof transformedValue === "string" && !pattern.test(transformedValue)) {
             return {
-                value: parsedValue,
+                value: transformedValue,
+                error: message || `Environment variable "${key}" does not match pattern /${pattern.source}/`
+            };
+        }
+
+        // Check enum
+        if (enumValues && !enumValues.includes(transformedValue)) {
+            return {
+                value: transformedValue,
+                error: message || `Environment variable "${key}" must be one of: ${enumValues.join(", ")}`
+            };
+        }
+
+        //Run custom validation if provided
+        if(validate && !validate(transformedValue)) {
+            return {
+                value: transformedValue,
                 error: message || `Environment variable "${key}" failed custom validation`
             };
         }
-        return { value: parsedValue };
+        return { value: transformedValue };
     } catch (err: any) {
         return {
             value: undefined,

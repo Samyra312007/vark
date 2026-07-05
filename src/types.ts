@@ -17,6 +17,24 @@ export interface SchemaField<T = any> {
   items?: SchemaField;
   /** For objects: the schema of the object */
   schema?: Schema;
+
+  // -- Transformers --
+  /** Trim whitespace (string only) */
+  trim?: boolean;
+  /** Convert to lowercase (string only) */
+  lowercase?: boolean;
+  /** Convert to uppercase (string only) */
+  uppercase?: boolean;
+  /** Custom transformation function */
+  transform?: (value: any) => any;
+
+  // -- Pattern matching --
+  /** Regex pattern (string only) */
+  pattern?: RegExp;
+
+  // -- Enum validation --
+  /** Restrict to specific values */
+  enum?: readonly any[];
 }
 
 export interface Schema {
