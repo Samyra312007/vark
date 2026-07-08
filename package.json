@@ -35,6 +35,14 @@
     "test:coverage": "jest --coverage",
     "prepublishOnly": "npm run test && npm run build"
   },
+  "peerDependencies": {
+    "dotenv": "^16.0.0"
+  },
+  "peerDependenciesMeta": {
+    "dotenv": {
+      "optional": true
+    }
+  },
   "devDependencies": {
     "@types/jest": "^30.0.0",
     "@types/node": "^26.1.0",

@@ -218,6 +218,9 @@ export function schema() {
 // Cache control
 export { invalidateCache } from "./cache";
 
+// Dotenv integration
+export { loadDotenv, LoadDotenvOptions } from "./dotenv";
+
 // Export types
 export * from "./types";
 export { CustomValidationError as ValidationError };

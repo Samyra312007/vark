@@ -1,4 +1,4 @@
-import { validateEnv, validateEnvAsync, schema, ValidationError, invalidateCache } from "../src/index";
+import { validateEnv, validateEnvAsync, schema, ValidationError, invalidateCache, loadDotenv } from "../src/index";
 
 describe("Env Validator", () => {
   const env = {
@@ -628,5 +628,70 @@ describe("Env Validator", () => {
 
       expect(result1.PORT).toBe(3000);
     });
+  });
+});
+
+describe("Dotenv Integration", () => {
+  const fs = require("fs");
+  const path = require("path");
+
+  afterEach(() => {
+    const testEnv = path.join(__dirname, ".env.test");
+    const customPath = path.join(__dirname, ".env.custom");
+    try { fs.unlinkSync(testEnv); } catch {}
+    try { fs.unlinkSync(customPath); } catch {}
+  });
+
+  test("loadDotenv parses .env file", () => {
+    const testEnv = path.join(__dirname, ".env.test");
+    fs.writeFileSync(testEnv, "PORT=3000\nHOST=localhost\n");
+    const result = loadDotenv({ path: testEnv });
+    expect(result.PORT).toBe("3000");
+    expect(result.HOST).toBe("localhost");
+  });
+
+  test("loadDotenv strips quotes from values", () => {
+    const testEnv = path.join(__dirname, ".env.test");
+    fs.writeFileSync(
+      testEnv,
+      'NAME="hello"\nTITLE=\'world\'\nRAW=bare\n',
+    );
+    const result = loadDotenv({ path: testEnv });
+    expect(result.NAME).toBe("hello");
+    expect(result.TITLE).toBe("world");
+    expect(result.RAW).toBe("bare");
+  });
+
+  test("loadDotenv skips comments and blank lines", () => {
+    const testEnv = path.join(__dirname, ".env.test");
+    fs.writeFileSync(
+      testEnv,
+      "# this is a comment\n\nPORT=3000\n# another comment\n",
+    );
+    const result = loadDotenv({ path: testEnv });
+    expect(result.PORT).toBe("3000");
+    expect(Object.keys(result)).toHaveLength(1);
+  });
+
+  test("loadDotenv returns empty object for missing file", () => {
+    const result = loadDotenv({ path: "nonexistent.env" });
+    expect(result).toEqual({});
+  });
+
+  test("loadDotenv returns empty object for empty .env file", () => {
+    const testEnv = path.join(__dirname, ".env.test");
+    fs.writeFileSync(testEnv, "");
+    const result = loadDotenv({ path: testEnv });
+    expect(result).toEqual({});
+  });
+
+  test("loadDotenv works with validateEnv chain", () => {
+    const testEnv = path.join(__dirname, ".env.test");
+    fs.writeFileSync(testEnv, "PORT=3000\n");
+    const env = loadDotenv({ path: testEnv });
+    const result = validateEnv(env, { PORT: { type: "number" as const } }, {
+      throwOnError: false,
+    });
+    expect(result.PORT).toBe(3000);
   });
 });
