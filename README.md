@@ -1,9 +1,9 @@
-# env-validator
+# Vark
 
-**Zero-dependency** TypeScript library for validating environment variables (`process.env`) against a declarative schema. Automatically parses strings into numbers, booleans, arrays, and objects while providing type-safe access to validated values.
+**Type-safe environment variable validation** for Node.js. Parse `process.env` strings into numbers, booleans, arrays, and objects with a declarative schema no more manual `parseInt()` or `JSON.parse()` scattered across your config.
 
 ```ts
-import { validateEnv, schema } from "env-validator";
+import { validateEnv, schema } from "@onelifepolymath/vark";
 
 const config = validateEnv(process.env, {
   PORT: schema().number({ required: true }),
@@ -16,95 +16,85 @@ const config = validateEnv(process.env, {
 
 ## Features
 
-- **Type-safe** — returns correctly typed values based on your schema
-- **Zero dependencies** — no runtime overhead
-- **Schema builder** — fluent API via `schema()`
-- **Custom validation** — per-field validation functions with custom error messages
-- **Defaults & optionals** — default values for missing vars, optional fields
-- **Arrays & objects** — parse JSON-stringified env vars into structured data
-- **Error aggregation** — collects all validation errors before reporting
+- **Type-safe** — returns correctly typed values inferred from your schema
+- **Schema builder** — fluent API via `schema()` or plain objects
+- **Transformers** — `trim`, `lowercase`, `uppercase`, and custom `transform`
+- **Pattern matching** — regex validation on string fields
+- **Enum validation** — restrict values to a predefined set
+- **Nested objects** — recursive validation of deeply nested env JSON
+- **Custom validation** — per-field sync or async validators with custom messages
+- **Defaults & optionals** — default values, optional fields
+- **Error aggregation** — collects all errors before reporting
 - **Flexible error handling** — throw on error or return partial results
+- **Caching** — in-memory cache with optional TTL to skip repeated validation
+- **Async validators** — support for async/Promise-based validation functions
+- **Dotenv integration** — `loadDotenv()` helper for `.env` file loading
+- **CLI tool** — `vark validate` command for validating against schema files
+- **Zero dependencies** — built-in parser for `.env` files; `dotenv` is optional
 
 ## Installation
 
 ```bash
-npm install env-validator
+npm install @onelifepolymath/vark
+```
+
+For `.env` file loading with `dotenv` (optional):
+
+```bash
+npm install dotenv
 ```
 
 ## Quick Start
 
-### Basic validation
-
 ```ts
-import { validateEnv, ValidationError } from "env-validator";
+import { validateEnv } from "@onelifepolymath/vark";
 
-const env = {
-  PORT: "3000",
-  NODE_ENV: "production",
-  DEBUG: "true",
-};
-
-const config = validateEnv(env, {
+const config = validateEnv(process.env, {
   PORT: { type: "number", required: true },
   NODE_ENV: { type: "string", required: true },
   DEBUG: { type: "boolean", default: false },
 });
 
-console.log(config.PORT); // 3000 (number)
-console.log(config.DEBUG); // true (boolean)
-```
-
-### Using the schema builder
-
-```ts
-import { validateEnv, schema } from "env-validator";
-
-const config = validateEnv(process.env, {
-  PORT: schema().number({ required: true, validate: (v) => v >= 1024 }),
-  DB_URL: schema().string({ required: true }),
-  DEBUG: schema().boolean({ default: false }),
-  ALLOWED_ORIGINS: schema().array({ default: [] }),
-});
+console.log(config.PORT);    // 3000 (number)
+console.log(config.DEBUG);   // true (boolean)
 ```
 
 ## API
 
 ### `validateEnv(env, schema, options?)`
 
-Validates environment variables against a schema.
+Validates environment variables against a schema (sync).
 
-**Parameters**
+```ts
+validateEnv(
+  env: Record<string, string | undefined>,
+  schema: Schema,
+  options?: {
+    throwOnError?: boolean;    // default: true
+    allowUnknown?: boolean;    // default: false
+    cache?: {                  // optional caching
+      enabled: boolean;
+      ttl?: number;            // TTL in ms (no expiry if omitted)
+    };
+  },
+): ValidatedEnv<T>
+```
 
-| Param | Type | Default | Description |
-|-------|------|---------|-------------|
-| `env` | `Record<string, string \| undefined>` | — | Environment variables object (e.g., `process.env`) |
-| `schema` | `Schema` | — | Schema definition (see below) |
-| `options.throwOnError` | `boolean` | `true` | If `true`, throws `ValidationError` on failures |
-| `options.allowUnknown` | `boolean` | `false` | If `false`, unknown env vars trigger validation errors |
+### `validateEnvAsync(env, schema, options?)`
 
-**Returns** — `ValidatedEnv<T>` — an object with type-mapped values.
+Same API as `validateEnv` but supports async `validate` functions. Returns a `Promise<ValidatedEnv<T>>`.
 
 ### `schema()`
 
-Fluent schema builder returning helper methods for each type:
-
-| Method | Returns type |
-|--------|-------------|
-| `schema().string(opts)` | `SchemaField<string>` |
-| `schema().number(opts)` | `SchemaField<number>` |
-| `schema().integer(opts)` | `SchemaField<number>` |
-| `schema().boolean(opts)` | `SchemaField<boolean>` |
-| `schema().array(opts)` | `SchemaField<any[]>` |
-| `schema().object(opts)` | `SchemaField<object>` |
-
-### `Schema`
-
-A plain object where keys map to field names and values are `SchemaField` definitions:
+Fluent builder for schema fields:
 
 ```ts
-interface Schema {
-  [key: string]: SchemaField;
-}
+schema().string({ trim: true, lowercase: true, pattern: /^[a-z]+$/ })
+schema().number({ enum: [1, 2, 3] })
+schema().integer({ transform: (v) => Math.abs(v) })
+schema().boolean({ default: false })
+schema().array({ items: { type: "number" } })
+schema().object({ schema: { NAME: { type: "string" } } })
 ```
 
 ### `SchemaField`
@@ -112,18 +102,54 @@ interface Schema {
 ```ts
 interface SchemaField<T = any> {
   type: "string" | "number" | "boolean" | "integer" | "array" | "object";
-  required?: boolean;         // default: true
-  default?: T;                // fallback if the variable is not set
-  validate?: (value: T) => boolean; // custom validator
-  message?: string;           // custom error message
-  items?: SchemaField;        // for array types: schema for items
-  schema?: Schema;            // for object types: nested schema
+  required?: boolean;
+  default?: T;
+
+  // Validation
+  validate?: (value: T) => boolean | Promise<boolean>;
+  message?: string;
+
+  // Transformers (string-only: trim, lowercase, uppercase)
+  trim?: boolean;
+  lowercase?: boolean;
+  uppercase?: boolean;
+  transform?: (value: any) => any;
+
+  // Pattern matching (string-only)
+  pattern?: RegExp;
+
+  // Enum validation
+  enum?: readonly T[];
+
+  // Nested types
+  items?: SchemaField;     // for array items
+  schema?: Schema;          // for object fields
 }
+```
+
+### `loadDotenv(options?)`
+
+Load environment variables from a `.env` file. Tries `dotenv` if installed; falls back to a built-in parser.
+
+```ts
+loadDotenv(options?: {
+  path?: string;       // default: ".env"
+  encoding?: string;   // default: "utf8"
+}): Record<string, string>
+```
+
+### `invalidCache(key?)`
+
+Clear cached validation results.
+
+```ts
+invalidateCache();        // clear all cache
+invalidateCache(key);     // clear specific entry
 ```
 
 ### `ValidationError` (class)
 
-Thrown when `throwOnError` is `true` and validation fails.
+Thrown when validation fails with `throwOnError: true`:
 
 ```ts
 class ValidationError extends Error {
@@ -133,78 +159,175 @@ class ValidationError extends Error {
 }
 ```
 
-### TypeScript Types
+## CLI
 
-All types are exported from the package:
+A CLI tool is available via the `vark` binary:
 
-```ts
-import {
-  Schema, SchemaField, SchemaType, PrimitiveType,
-  ValidationResult, ValidationError, ValidatedEnv,
-} from "env-validator";
+```bash
+npx vark validate <schema-file> [options]
+```
+
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `-e, --env-file <path>` | Path to `.env` file (default: `.env`) |
+| `--no-throw` | Don't exit with error on validation failures |
+| `-u, --allow-unknown` | Allow unknown environment variables |
+| `-c, --cache` | Enable caching |
+| `--cache-ttl <ms>` | Cache TTL in milliseconds |
+| `-o, --output <format>` | Output format: `json` (default) or `text` |
+
+**Exit codes:**
+- `0` — all validations passed
+- `1` — validation errors (or runtime error)
+
+**Example:**
+
+```bash
+# schema.json: { "PORT": { "type": "number" } }
+# .env: PORT=3000
+
+vark validate schema.json
+# → { "PORT": 3000 }
 ```
 
 ## Examples
 
-### Custom validation with message
+### Schema builder with transformers
 
 ```ts
 const config = validateEnv(process.env, {
-  PORT: {
-    type: "number",
-    validate: (v) => v >= 1024 && v <= 65535,
-    message: "PORT must be between 1024 and 65535",
+  NAME: schema().string({ trim: true, lowercase: true }),
+  CODE: schema().string({ uppercase: true, pattern: /^[A-Z]{3}$/ }),
+  RATE: schema().number({ transform: (v) => Math.round(v * 100) / 100 }),
+});
+```
+
+### Enum validation
+
+```ts
+const config = validateEnv(process.env, {
+  NODE_ENV: {
+    type: "string",
+    enum: ["development", "staging", "production"],
+    message: "NODE_ENV must be one of: development, staging, production",
+  },
+  LOG_LEVEL: schema().string({ enum: ["debug", "info", "warn", "error"] }),
+});
+```
+
+### Async validation
+
+```ts
+const config = await validateEnvAsync(process.env, {
+  API_KEY: {
+    type: "string",
+    validate: async (value) => {
+      const res = await fetch(`https://api.example.com/verify?key=${value}`);
+      return res.ok;
+    },
+    message: "API key is invalid",
   },
 });
 ```
 
-### Arrays (JSON-stringified)
+### Nested object validation
 
 ```ts
-// env: ALLOWED_HOSTS='["localhost","127.0.0.1"]'
 const config = validateEnv(process.env, {
-  ALLOWED_HOSTS: { type: "array" },
+  DB: schema().object({
+    schema: {
+      HOST: { type: "string", required: true },
+      PORT: { type: "number", default: 5432 },
+    },
+  }),
 });
-// config.ALLOWED_HOSTS → ["localhost", "127.0.0.1"]
 ```
 
-### Objects (JSON-stringified)
+### Caching
 
 ```ts
-// env: CONFIG='{"timeout":30,"retries":3}'
-const config = validateEnv(process.env, {
-  CONFIG: { type: "object" },
+const config = validateEnv(process.env, schema, {
+  cache: { enabled: true, ttl: 60000 }, // cache for 60s
 });
-// config.CONFIG → { timeout: 30, retries: 3 }
 ```
 
-### Optional fields
+### Dotenv integration
 
 ```ts
-const config = validateEnv({}, {
-  OPTIONAL_VAR: { type: "string", required: false },
-});
-// config.OPTIONAL_VAR → undefined
+import { loadDotenv, validateEnv } from "@onelifepolymath/vark";
+
+const env = loadDotenv(); // loads .env file
+const config = validateEnv(env, schema);
 ```
 
-### Suppress errors (partial data)
+### Using with `dotenv`
+
+```bash
+npm install dotenv
+```
+
+```ts
+import dotenv from "dotenv";
+import { validateEnv } from "@onelifepolymath/vark";
+
+dotenv.config();
+const config = validateEnv(process.env, schema);
+```
+
+### Error handling (partial data)
 
 ```ts
 const config = validateEnv(
   { DEBUG: "true" },
-  { PORT: { type: "number", required: true }, DEBUG: { type: "boolean", default: false } },
+  { PORT: { type: "number", required: true }, DEBUG: { type: "boolean" } },
   { throwOnError: false },
 );
-// config.PORT → undefined (missing)
+// config.PORT  → undefined (missing, but no throw)
 // config.DEBUG → true
 ```
 
-### Reject unknown variables
+### Arrays and objects (JSON-stringified)
 
 ```ts
-// process.env contains EXTRA_VAR not in schema
-validateEnv(process.env, { PORT: { type: "number" } }, { allowUnknown: false });
-// Throws ValidationError: Unknown environment variables: EXTRA_VAR
+// env: ALLOWED_HOSTS='["localhost","127.0.0.1"]'
+const config = validateEnv(process.env, {
+  ALLOWED_HOSTS: { type: "array", items: { type: "string" } },
+});
+// config.ALLOWED_HOSTS → ["localhost", "127.0.0.1"]
+```
+
+### Get all validation errors
+
+```ts
+try {
+  validateEnv(process.env, schema);
+} catch (error) {
+  if (error instanceof ValidationError) {
+    console.error(error.errors);
+    // [{ field: "PORT", message: "Expected a number, got \"abc\"", value: "abc" }]
+    console.error(error.data);  // partial validated data
+  }
+}
+```
+
+## TypeScript Types
+
+All types are exported:
+
+```ts
+import type {
+  Schema,
+  SchemaField,
+  SchemaType,
+  PrimitiveType,
+  ValidationResult,
+  ValidationError,
+  ValidatedEnv,
+  CacheOptions,
+  LoadDotenvOptions,
+} from "@onelifepolymath/vark";
 ```
 
 ## Scripts
