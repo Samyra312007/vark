@@ -1,4 +1,4 @@
-import { validateEnv, validateEnvAsync, schema, ValidationError } from "../src/index";
+import { validateEnv, validateEnvAsync, schema, ValidationError, invalidateCache } from "../src/index";
 
 describe("Env Validator", () => {
   const env = {
@@ -509,5 +509,124 @@ describe("Env Validator", () => {
         PORT: { type: "number" },
       }, { allowUnknown: false }),
     ).rejects.toThrow(/Unknown environment variables/);
+  });
+
+  describe("Caching", () => {
+    beforeEach(() => {
+      invalidateCache();
+    });
+
+    test("cache hit returns same data without re-validation", () => {
+      const schema = { PORT: { type: "number" as const } };
+      const env = { PORT: "3000" };
+
+      const result1 = validateEnv(env, schema, {
+        throwOnError: false,
+        cache: { enabled: true },
+      });
+
+      const result2 = validateEnv(env, schema, {
+        throwOnError: false,
+        cache: { enabled: true },
+      });
+
+      expect(result1.PORT).toBe(3000);
+      expect(result2.PORT).toBe(3000);
+    });
+
+    test("cache miss on different env values", () => {
+      const schema = { PORT: { type: "number" as const } };
+
+      const result1 = validateEnv({ PORT: "3000" }, schema, {
+        throwOnError: false,
+        cache: { enabled: true },
+      });
+      const result2 = validateEnv({ PORT: "4000" }, schema, {
+        throwOnError: false,
+        cache: { enabled: true },
+      });
+
+      expect(result1.PORT).toBe(3000);
+      expect(result2.PORT).toBe(4000);
+    });
+
+    test("cache miss on different schema", () => {
+      const env = { PORT: "3000" };
+
+      const result1 = validateEnv(env, { PORT: { type: "number" as const } }, {
+        throwOnError: false,
+        cache: { enabled: true },
+      });
+      const result2 = validateEnv(env, { PORT: { type: "string" as const } }, {
+        throwOnError: false,
+        cache: { enabled: true },
+      });
+
+      expect(result1.PORT).toBe(3000);
+      expect(result2.PORT).toBe("3000");
+    });
+
+    test("cache does not store invalid results", () => {
+      const schema = { PORT: { type: "number" as const } };
+
+      validateEnv({ PORT: "abc" }, schema, {
+        throwOnError: false,
+        cache: { enabled: true },
+      });
+
+      const result = validateEnv({ PORT: "abc" }, schema, {
+        throwOnError: false,
+        cache: { enabled: true },
+      });
+      expect(result.PORT).toBeUndefined();
+    });
+
+    test("cache with TTL expiration", async () => {
+      const schema = { PORT: { type: "number" as const } };
+      const env = { PORT: "3000" };
+
+      const result1 = validateEnv(env, schema, {
+        throwOnError: false,
+        cache: { enabled: true, ttl: 1 },
+      });
+      expect(result1.PORT).toBe(3000);
+
+      await new Promise((r) => setTimeout(r, 2));
+
+      const result2 = validateEnv(env, schema, {
+        throwOnError: false,
+        cache: { enabled: true, ttl: 1 },
+      });
+      expect(result2.PORT).toBe(3000);
+    });
+
+    test("cache with async validation", async () => {
+      const schema = { PORT: { type: "number" as const } };
+      const env = { PORT: "3000" };
+
+      const result1 = await validateEnvAsync(env, schema, {
+        throwOnError: false,
+        cache: { enabled: true },
+      });
+      expect(result1.PORT).toBe(3000);
+
+      const result2 = await validateEnvAsync(env, schema, {
+        throwOnError: false,
+        cache: { enabled: true },
+      });
+      expect(result2.PORT).toBe(3000);
+    });
+
+    test("cache disabled does not cache", () => {
+      const schema = { PORT: { type: "number" as const } };
+      const env = { PORT: "3000" };
+
+      const result1 = validateEnv(env, schema, {
+        throwOnError: false,
+        cache: { enabled: false },
+      });
+
+      expect(result1.PORT).toBe(3000);
+    });
   });
 });

@@ -2,6 +2,7 @@ import { Schema, ValidationResult, ValidatedEnv } from "./types";
 import { validateAll } from "./validators";
 import { validateAllAsync } from "./async-validators";
 import { ValidationError as CustomValidationError } from "./errors";
+import { globalCache, buildCacheKey, CacheOptions } from "./cache";
 
 /**
  * Validate environment variables against a schema
@@ -16,9 +17,17 @@ export function validateEnv<T extends Schema>(
   options: {
     throwOnError?: boolean;
     allowUnknown?: boolean;
+    cache?: CacheOptions;
   } = { throwOnError: true, allowUnknown: false },
 ): ValidatedEnv<T> {
-  const { throwOnError = true, allowUnknown = false } = options;
+  const { throwOnError = true, allowUnknown = false, cache } = options;
+
+  // Check cache
+  if (cache?.enabled) {
+    const key = buildCacheKey(env, schema);
+    const cached = globalCache.get(key);
+    if (cached !== undefined) return cached as ValidatedEnv<T>;
+  }
 
   // Filter environment variables if allowUnknown is false
   let envToValidate = env;
@@ -55,6 +64,12 @@ export function validateEnv<T extends Schema>(
     return data as ValidatedEnv<T>;
   }
 
+  // Cache successful result
+  if (cache?.enabled) {
+    const key = buildCacheKey(env, schema);
+    globalCache.set(key, data, cache.ttl);
+  }
+
   return data as ValidatedEnv<T>;
 }
 
@@ -68,9 +83,17 @@ export async function validateEnvAsync<T extends Schema>(
   options: {
     throwOnError?: boolean;
     allowUnknown?: boolean;
+    cache?: CacheOptions;
   } = { throwOnError: true, allowUnknown: false },
 ): Promise<ValidatedEnv<T>> {
-  const { throwOnError = true, allowUnknown = false } = options;
+  const { throwOnError = true, allowUnknown = false, cache } = options;
+
+  // Check cache
+  if (cache?.enabled) {
+    const key = buildCacheKey(env, schema);
+    const cached = globalCache.get(key);
+    if (cached !== undefined) return cached as ValidatedEnv<T>;
+  }
 
   let envToValidate = env;
   if (!allowUnknown) {
@@ -101,6 +124,12 @@ export async function validateEnvAsync<T extends Schema>(
       throw new CustomValidationError(errors, data);
     }
     return data as ValidatedEnv<T>;
+  }
+
+  // Cache successful result
+  if (cache?.enabled) {
+    const key = buildCacheKey(env, schema);
+    globalCache.set(key, data, cache.ttl);
   }
 
   return data as ValidatedEnv<T>;
@@ -185,6 +214,9 @@ export function schema() {
     }),
   };
 }
+
+// Cache control
+export { invalidateCache } from "./cache";
 
 // Export types
 export * from "./types";
