@@ -636,14 +636,14 @@ describe("Dotenv Integration", () => {
   const path = require("path");
 
   afterEach(() => {
-    const testEnv = path.join(__dirname, ".env.test");
-    const customPath = path.join(__dirname, ".env.custom");
+    const testEnv = path.join(__dirname, "index.env.test");
+    const customPath = path.join(__dirname, "index.env.custom");
     try { fs.unlinkSync(testEnv); } catch {}
     try { fs.unlinkSync(customPath); } catch {}
   });
 
   test("loadDotenv parses .env file", () => {
-    const testEnv = path.join(__dirname, ".env.test");
+    const testEnv = path.join(__dirname, "index.env.test");
     fs.writeFileSync(testEnv, "PORT=3000\nHOST=localhost\n");
     const result = loadDotenv({ path: testEnv });
     expect(result.PORT).toBe("3000");
@@ -651,7 +651,7 @@ describe("Dotenv Integration", () => {
   });
 
   test("loadDotenv strips quotes from values", () => {
-    const testEnv = path.join(__dirname, ".env.test");
+    const testEnv = path.join(__dirname, "index.env.test");
     fs.writeFileSync(
       testEnv,
       'NAME="hello"\nTITLE=\'world\'\nRAW=bare\n',
@@ -663,7 +663,7 @@ describe("Dotenv Integration", () => {
   });
 
   test("loadDotenv skips comments and blank lines", () => {
-    const testEnv = path.join(__dirname, ".env.test");
+    const testEnv = path.join(__dirname, "index.env.test");
     fs.writeFileSync(
       testEnv,
       "# this is a comment\n\nPORT=3000\n# another comment\n",
@@ -679,14 +679,14 @@ describe("Dotenv Integration", () => {
   });
 
   test("loadDotenv returns empty object for empty .env file", () => {
-    const testEnv = path.join(__dirname, ".env.test");
+    const testEnv = path.join(__dirname, "index.env.test");
     fs.writeFileSync(testEnv, "");
     const result = loadDotenv({ path: testEnv });
     expect(result).toEqual({});
   });
 
   test("loadDotenv works with validateEnv chain", () => {
-    const testEnv = path.join(__dirname, ".env.test");
+    const testEnv = path.join(__dirname, "index.env.test");
     fs.writeFileSync(testEnv, "PORT=3000\n");
     const env = loadDotenv({ path: testEnv });
     const result = validateEnv(env, { PORT: { type: "number" as const } }, {

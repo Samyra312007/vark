@@ -50,8 +50,9 @@ export function loadDotenv(options: LoadDotenvOptions = {}): Record<string, stri
   let content: string;
   try {
     content = fs.readFileSync(path, encoding);
-  } catch {
-    return {};
+  } catch (e: any) {
+    if (e.code === "ENOENT") return {};
+    throw e;
   }
 
   const dotenv = tryLoadDotenv();
