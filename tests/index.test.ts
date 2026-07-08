@@ -1,4 +1,4 @@
-import { validateEnv, schema, ValidationError } from "../src/index";
+import { validateEnv, validateEnvAsync, schema, ValidationError } from "../src/index";
 
 describe("Env Validator", () => {
   const env = {
@@ -419,5 +419,95 @@ describe("Env Validator", () => {
     });
     expect(result.SERVER.HOST).toBe("0.0.0.0");
     expect(result.SERVER.PORT).toBe(8080);
+  });
+
+  // ── Async validation ──────────────────────────────────────────
+
+  test("validateEnvAsync passes with async validator", async () => {
+    const result = await validateEnvAsync({ PORT: "3000" }, {
+      PORT: { type: "number", validate: async (v) => v > 1000 },
+    });
+    expect(result.PORT).toBe(3000);
+  });
+
+  test("validateEnvAsync fails with async validator", async () => {
+    await expect(
+      validateEnvAsync({ PORT: "500" }, {
+        PORT: { type: "number", validate: async (v) => v > 1000 },
+      }),
+    ).rejects.toThrow(ValidationError);
+  });
+
+  test("validateEnvAsync with custom message", async () => {
+    await expect(
+      validateEnvAsync({ PORT: "500" }, {
+        PORT: {
+          type: "number",
+          validate: async (v) => v > 1000,
+          message: "PORT must be greater than 1000",
+        },
+      }),
+    ).rejects.toThrow("PORT must be greater than 1000");
+  });
+
+  test("validateEnvAsync mixed sync and async validators", async () => {
+    const result = await validateEnvAsync(
+      { PORT: "3000", DEBUG: "true" },
+      {
+        PORT: { type: "number", validate: async (v) => v > 1000 },
+        DEBUG: { type: "boolean", default: false },
+      },
+    );
+    expect(result.PORT).toBe(3000);
+    expect(result.DEBUG).toBe(true);
+  });
+
+  test("sync validateEnv rejects async validators with helpful error", () => {
+    expect(() => {
+      validateEnv({ PORT: "3000" }, {
+        PORT: { type: "number", validate: async (v) => v > 1000 },
+      });
+    }).toThrow(/Use validateEnvAsync/);
+  });
+
+  test("validateEnvAsync with throwOnError false returns partial data", async () => {
+    const result = await validateEnvAsync(
+      {},
+      {
+        PORT: { type: "number", required: true },
+        DEBUG: { type: "boolean", default: false, validate: async (v) => v === false },
+      },
+      { throwOnError: false },
+    );
+    expect(result.PORT).toBeUndefined();
+    expect(result.DEBUG).toBe(false);
+  });
+
+  test("validateEnvAsync with schema builder", async () => {
+    const result = await validateEnvAsync({ MODE: "prod" }, {
+      MODE: schema().string({
+        enum: ["dev", "staging", "prod"],
+        validate: async (v) => v.length > 0,
+      }),
+    });
+    expect(result.MODE).toBe("prod");
+  });
+
+  test("validateEnvAsync applies transformers before async validate", async () => {
+    const result = await validateEnvAsync({ NAME: "  Hello  " }, {
+      NAME: schema().string({
+        trim: true,
+        validate: async (v) => v === "Hello",
+      }),
+    });
+    expect(result.NAME).toBe("Hello");
+  });
+
+  test("validateEnvAsync rejects unknown keys", async () => {
+    await expect(
+      validateEnvAsync({ PORT: "3000", EXTRA: "x" }, {
+        PORT: { type: "number" },
+      }, { allowUnknown: false }),
+    ).rejects.toThrow(/Unknown environment variables/);
   });
 });

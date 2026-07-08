@@ -1,65 +1,21 @@
-import { SchemaField, PrimitiveType } from './types';
+import { SchemaField, Schema, PrimitiveType } from './types';
+import { parseValue } from './validators';
 import { applyTransformers } from './transformers';
 
-/**
- * Parse a string value to the appropriate type
- */
-export function parseValue(value: any, type: PrimitiveType): any {
-    if(value === undefined || value === null){
-        return undefined;
-    }
-
-    switch (type) {
-        case 'string':
-            if (typeof value === 'string') return value;
-            return String(value);
-        case 'number':
-            if (typeof value === 'number' && !isNaN(value)) return value;
-            const num = Number(value);
-            if(isNaN(num)){
-                throw new Error(`Expected a number, got "${value}"`);
-            }
-            return num;
-        case 'integer':
-            if (typeof value === 'number' && Number.isInteger(value)) return value;
-            const int = parseInt(value, 10);
-            if(isNaN(int) || int.toString() !== value){
-                throw new Error(`Expected an integer, got "${value}"`);
-            }
-            return int;
-        case 'boolean':
-            if (typeof value === 'boolean') return value;
-            if (value.toLowerCase() === 'true' || value === '1') return true;
-            if(value.toLowerCase() === 'false' || value === '0') return false;
-            throw new Error(`Expected a token (true/false/1/0), got "${value}"`);
-        default:
-            return value;
-    }
-}
-
-/**
- * Validate a single field against its schema
- */
-export function validateField(
+export async function validateFieldAsync(
     key: string,
     rawValue: any,
     fieldSchema: SchemaField,
-) : { value: any; error?: string } { 
+): Promise<{ value: any; error?: string }> {
     const { type, required = true, default: defaultValue, validate, message, pattern, enum: enumValues } = fieldSchema;
-
-    //check if value is provided
     let value: any = rawValue;
 
-    //Handle missing values
     if (value === undefined || value === null) {
-        if (defaultValue !== undefined){
-            //use default value (already the correct type)
+        if (defaultValue !== undefined) {
             return { value: defaultValue };
         } else if (!required) {
-            //not required and no default, skip validation
-            return {value: undefined};
+            return { value: undefined };
         } else {
-            //Required but missing
             return {
                 value: undefined,
                 error: message || `Environment variable "${key}" is required but not set`
@@ -67,35 +23,31 @@ export function validateField(
         }
     }
 
-    //handle array type
-    if(type === 'array'){
-        try{
-            //try to parse as JSON array
+    if (type === 'array') {
+        try {
             const parsed = typeof value === 'string' ? JSON.parse(value) : value;
-            if(!Array.isArray(parsed)) {
+            if (!Array.isArray(parsed)) {
                 throw new Error(`Expected an array, got ${typeof parsed}`);
             }
 
-            //validate array items if items schema is provided
-            if(fieldSchema.items){
+            if (fieldSchema.items) {
                 const itemErrors: string[] = [];
-                parsed.forEach((item, index) => {
+                for (let i = 0; i < parsed.length; i++) {
                     try {
-                        // For simplicity, validate each item
-                        const itemValue = validateField(
-                            `${key}[${index}]`,
-                            String(item),
+                        const itemValue = await validateFieldAsync(
+                            `${key}[${i}]`,
+                            String(parsed[i]),
                             fieldSchema.items!
                         );
-                        if(itemValue.error){
+                        if (itemValue.error) {
                             itemErrors.push(itemValue.error);
                         }
-                    } catch (err: any){
+                    } catch (err: any) {
                         itemErrors.push(err.message);
                     }
-                });
-                if(itemErrors.length > 0){
-                    return {value: parsed, error: itemErrors.join('; ')};
+                }
+                if (itemErrors.length > 0) {
+                    return { value: parsed, error: itemErrors.join('; ') };
                 }
             }
             value = applyTransformers(parsed, fieldSchema);
@@ -105,7 +57,7 @@ export function validateField(
                     error: message || `Environment variable "${key}" must be one of: ${enumValues.join(", ")}`
                 };
             }
-        } catch (err: any){
+        } catch (err: any) {
             return {
                 value: undefined,
                 error: message || `Environment variable "${key}" must be a valid JSON array: ${err.message}`
@@ -114,11 +66,10 @@ export function validateField(
         return { value };
     }
 
-    // Handle object type
-    if(type === 'object'){
+    if (type === 'object') {
         try {
             const parsed = typeof value === 'string' ? JSON.parse(value) : value;
-            if(typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+            if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
                 throw new Error(`Expected an object, got ${typeof parsed}`);
             }
             value = applyTransformers(parsed, fieldSchema);
@@ -129,9 +80,8 @@ export function validateField(
                 };
             }
 
-            // Recursive nested object validation
             if (fieldSchema.schema) {
-                const nestedResult = validateObject(value, fieldSchema.schema, key);
+                const nestedResult = await validateAllAsync(value, fieldSchema.schema);
                 if (nestedResult.errors.length > 0) {
                     const errorStr = nestedResult.errors
                         .map(e => e.message)
@@ -152,14 +102,10 @@ export function validateField(
         return { value };
     }
 
-    // Handle primitive types
     try {
         const parsedValue = parseValue(value, type as PrimitiveType);
-
-        // Apply transformers
         const transformedValue = applyTransformers(parsedValue, fieldSchema);
 
-        // Check pattern (string only)
         if (pattern && typeof transformedValue === "string" && !pattern.test(transformedValue)) {
             return {
                 value: transformedValue,
@@ -167,7 +113,6 @@ export function validateField(
             };
         }
 
-        // Check enum
         if (enumValues && !enumValues.includes(transformedValue)) {
             return {
                 value: transformedValue,
@@ -175,15 +120,8 @@ export function validateField(
             };
         }
 
-        //Run custom validation if provided
-        if(validate) {
-            const result = validate(transformedValue);
-            if (result instanceof Promise) {
-                return {
-                    value: transformedValue,
-                    error: `Field "${key}" has an async validator. Use validateEnvAsync() instead.`
-                };
-            }
+        if (validate) {
+            const result = await validate(transformedValue);
             if (!result) {
                 return {
                     value: transformedValue,
@@ -200,21 +138,18 @@ export function validateField(
     }
 }
 
-/**
- * Validate multiple fields against a schema
- */
-export function validateAll(
+export async function validateAllAsync(
     env: Record<string, any>,
     schema: Record<string, SchemaField>
-) : { data: Record<string, any>; errors: Array<{field: string; message: string; value?: any}> } {
+): Promise<{ data: Record<string, any>; errors: Array<{field: string; message: string; value?: any}> }> {
     const data: Record<string, any> = {};
     const errors: Array<{ field: string; message: string; value?: any }> = [];
 
-    for(const [key, fieldSchema] of Object.entries(schema)) {
+    for (const [key, fieldSchema] of Object.entries(schema)) {
         const rawValue = env[key];
-        const result = validateField(key, rawValue, fieldSchema);
+        const result = await validateFieldAsync(key, rawValue, fieldSchema);
 
-        if(result.error){
+        if (result.error) {
             errors.push({
                 field: key,
                 message: result.error,
@@ -224,31 +159,5 @@ export function validateAll(
             data[key] = result.value;
         }
     }
-    return {data, errors};
-}
-
-/**
- * Recursively validate a parsed object against a nested schema
- */
-export function validateObject(
-    value: Record<string, any>,
-    schema: Record<string, SchemaField>,
-    parentKey: string
-): { data: Record<string, any>; errors: Array<{field: string; message: string}> } {
-    const data: Record<string, any> = {};
-    const errors: Array<{field: string; message: string}> = [];
-
-    for (const [key, fieldSchema] of Object.entries(schema)) {
-        const fullPath = `${parentKey}.${key}`;
-        const rawValue = value[key];
-        const result = validateField(key, rawValue, fieldSchema);
-
-        if (result.error) {
-            errors.push({ field: fullPath, message: result.error });
-        } else {
-            data[key] = result.value;
-        }
-    }
-
     return { data, errors };
 }

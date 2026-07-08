@@ -1,5 +1,6 @@
 import { Schema, ValidationResult, ValidatedEnv } from "./types";
 import { validateAll } from "./validators";
+import { validateAllAsync } from "./async-validators";
 import { ValidationError as CustomValidationError } from "./errors";
 
 /**
@@ -58,6 +59,54 @@ export function validateEnv<T extends Schema>(
 }
 
 /**
+ * Validate environment variables against a schema (async)
+ * Supports async validator functions
+ */
+export async function validateEnvAsync<T extends Schema>(
+  env: Record<string, string | undefined>,
+  schema: T,
+  options: {
+    throwOnError?: boolean;
+    allowUnknown?: boolean;
+  } = { throwOnError: true, allowUnknown: false },
+): Promise<ValidatedEnv<T>> {
+  const { throwOnError = true, allowUnknown = false } = options;
+
+  let envToValidate = env;
+  if (!allowUnknown) {
+    const allowedKeys = Object.keys(schema);
+    envToValidate = {};
+    for (const key of allowedKeys) {
+      if (key in env) {
+        envToValidate[key] = env[key];
+      }
+    }
+  }
+
+  const { data, errors } = await validateAllAsync(envToValidate, schema);
+
+  if (!allowUnknown) {
+    const unknownKeys = Object.keys(env).filter((key) => !(key in schema));
+    if (unknownKeys.length > 0) {
+      errors.push({
+        field: "unknown_keys",
+        message: `Unknown environment variables: ${unknownKeys.join(", ")}`,
+        value: unknownKeys,
+      });
+    }
+  }
+
+  if (errors.length > 0) {
+    if (throwOnError) {
+      throw new CustomValidationError(errors, data);
+    }
+    return data as ValidatedEnv<T>;
+  }
+
+  return data as ValidatedEnv<T>;
+}
+
+/**
  * Create a schema builder for easier schema creation
  */
 export function schema() {
@@ -65,7 +114,7 @@ export function schema() {
     string: (options: {
       required?: boolean;
       default?: string;
-      validate?: (value: string) => boolean;
+      validate?: (value: string) => boolean | Promise<boolean>;
       message?: string;
       trim?: boolean;
       lowercase?: boolean;
@@ -80,7 +129,7 @@ export function schema() {
     number: (options: {
       required?: boolean;
       default?: number;
-      validate?: (value: number) => boolean;
+      validate?: (value: number) => boolean | Promise<boolean>;
       message?: string;
       transform?: (value: any) => any;
       enum?: readonly number[];
@@ -91,7 +140,7 @@ export function schema() {
     integer: (options: {
       required?: boolean;
       default?: number;
-      validate?: (value: number) => boolean;
+      validate?: (value: number) => boolean | Promise<boolean>;
       message?: string;
       transform?: (value: any) => any;
       enum?: readonly number[];
@@ -102,7 +151,7 @@ export function schema() {
     boolean: (options: {
       required?: boolean;
       default?: boolean;
-      validate?: (value: boolean) => boolean;
+      validate?: (value: boolean) => boolean | Promise<boolean>;
       message?: string;
       transform?: (value: any) => any;
       enum?: readonly boolean[];
@@ -114,7 +163,7 @@ export function schema() {
       required?: boolean;
       default?: any[];
       items?: any;
-      validate?: (value: any[]) => boolean;
+      validate?: (value: any[]) => boolean | Promise<boolean>;
       message?: string;
       transform?: (value: any) => any;
       enum?: readonly any[][];
@@ -125,7 +174,7 @@ export function schema() {
     object: (options: {
       required?: boolean;
       default?: Record<string, any>;
-      validate?: (value: Record<string, any>) => boolean;
+      validate?: (value: Record<string, any>) => boolean | Promise<boolean>;
       message?: string;
       transform?: (value: any) => any;
       enum?: readonly Record<string, any>[];

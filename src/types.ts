@@ -9,8 +9,8 @@ export interface SchemaField<T = any> {
   required?: boolean;
   /** Default value if not provided */
   default?: T;
-  /** Custom validation function */
-  validate?: (value: T) => boolean;
+  /** Custom validation function (sync or async) */
+  validate?: (value: T) => boolean | Promise<boolean>;
   /** Custom error message */
   message?: string;
   /** For arrays: the type of items */
